@@ -1,0 +1,329 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Brand {
+  id           String    @id @default(uuid())
+  name         String    @unique
+  slug         String    @unique
+  description  String? // Optional description of the brand
+  logoUrl      String? // URL to the brand's logo
+  website      String? // Official website of the brand
+  contactEmail String? // Contact email for brand inquiries
+  contactPhone String? // Contact phone number
+  ocrPrompt    String?
+  status       Status    @default(ACTIVE)
+  projects     Project[] // Relationship with projects
+
+  createdBy String? // User who created this brand (could link to an Admin)
+  updatedBy String? // Last user who updated the brand
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Admin     Admin[]
+}
+
+model Project {
+  id               String             @id @default(uuid())
+  name             String
+  slug             String             @unique
+  description      String? // Optional description of the project
+  brandId          String
+  brand            Brand              @relation(fields: [brandId], references: [id])
+  startDate        DateTime? // Optional: When the project starts
+  endDate          DateTime? // Optional: When the project ends
+  status           Status             @default(ACTIVE)
+  budget           Decimal? // Optional: Budget assigned to the project
+  vendors          ProjectVendor[] // ✅ A project can have multiple vendors
+  promoters        ProjectPromoter[] // ✅ A project can have multiple promoters
+  orders           OrderCaptured[] // ✅ Orders related to this project
+  createdBy        String? // Admin or user who created the project
+  updatedBy        String? // Last admin/user who updated it
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  ProjectLocation  ProjectLocation[]
+  ProjectPromoCode ProjectPromoCode[]
+}
+
+model Promoter {
+  id               String            @id @default(uuid())
+  name             String? // Optional: Full name of the promoter
+  email            String? // Optional: Email for communication
+  phone            String            @unique
+  altPhone         String?
+  otp              String?
+  otpExpiresAt     DateTime?
+  status           Status            @default(ACTIVE)
+  vendorId         String?
+  vendor           Vendor?           @relation(fields: [vendorId], references: [id])
+  cityId           String?
+  city             City?             @relation(fields: [cityId], references: [id])
+  activityLocId    String?
+  activityLocation ActivityLocation? @relation(fields: [activityLocId], references: [id])
+  projects         ProjectPromoter[]
+  orders           OrderCaptured[]
+  lastActive       DateTime? // Optional: Last login/activity time
+  sessionToken     String? // Store JWT or unique session ID
+  createdBy        String? // Admin/user who added the promoter
+  updatedBy        String? // Last admin/user who updated details
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  ActivityImages   ActivityImages[]
+  PromoterSession  PromoterSession[]
+}
+
+model PromoterSession {
+  id         String   @id @default(uuid())
+  promoterId String
+  promoter   Promoter @relation(fields: [promoterId], references: [id])
+
+  loginAt       DateTime?
+  loginPhotoUrl String // Photo captured at login
+
+  logoutAt       DateTime? // Will be set when logging out
+  logoutPhotoUrl String? // Photo captured at logout
+
+  latitude   String? // Optional location info
+  longitude  String?
+  deviceInfo String? // Optional: store device/browser info
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProjectPromoter {
+  id         String   @id @default(uuid())
+  projectId  String
+  promoterId String
+  project    Project  @relation(fields: [projectId], references: [id])
+  promoter   Promoter @relation(fields: [promoterId], references: [id])
+
+  @@unique([projectId, promoterId]) // Ensures a promoter cannot be added to the same project twice
+}
+
+model Vendor {
+  id               String             @id @default(uuid())
+  name             String
+  slug             String             @unique
+  email            String? // Contact email for vendor
+  phone            String? // Primary contact number
+  address          String? // Vendor's physical address
+  gstNumber        String? // GST number for tax compliance
+  panNumber        String? // PAN number for financial records
+  status           Status             @default(ACTIVE)
+  contactPerson    String? // Name of the primary contact person
+  website          String? // Vendor's website URL
+  logo             String? // URL for vendor logo/image
+  promoters        Promoter[]
+  projects         ProjectVendor[] // Relation to Project through join table
+  orders           OrderCaptured[]
+  createdBy        String? // User/admin who added the vendor
+  updatedBy        String? // Last admin who updated vendor details
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  ProjectPromoCode ProjectPromoCode[]
+}
+
+model ProjectVendor {
+  id        String  @id @default(uuid())
+  projectId String
+  vendorId  String
+  project   Project @relation(fields: [projectId], references: [id])
+  vendor    Vendor  @relation(fields: [vendorId], references: [id])
+
+  @@unique([projectId, vendorId]) // Ensures a vendor is linked to a project only once
+}
+
+model City {
+  id               String             @id @default(uuid())
+  name             String             @unique
+  slug             String             @unique
+  state            String?
+  status           Status             @default(ACTIVE)
+  pincode          String? // Common pincode for the city
+  latitude         Float? // Geographic latitude for mapping
+  longitude        Float? // Geographic longitude for mapping
+  areas            Area[]
+  createdBy        String? // Admin or user who added the city
+  updatedBy        String? // Last admin who modified the city
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  Promoter         Promoter[]
+  ProjectPromoCode ProjectPromoCode[]
+}
+
+model Area {
+  id        String             @id @default(uuid())
+  name      String
+  slug      String             @unique
+  cityId    String
+  city      City               @relation(fields: [cityId], references: [id])
+  locations ActivityLocation[] // Add this relation
+  pincode   String? // Pincode(s) for the area
+  latitude  Float? // Geographic latitude for mapping
+  longitude Float? // Geographic longitude for mapping
+  status    Status             @default(ACTIVE)
+  areaType  String? // "residential", "commercial", "industrial", "mixed-use"
+  createdBy String? // Admin or user who added the area
+  updatedBy String? // Last admin who modified the area
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+model Activity {
+  id               String             @id @default(uuid())
+  name             String             @unique
+  slug             String             @unique
+  status           Status             @default(ACTIVE)
+  activityLocation ActivityLocation[]
+  orders           OrderCaptured[]
+  createdBy        String? // Admin or user who added the area
+  updatedBy        String? // Last admin who modified the area
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model ActivityImages {
+  id                 String           @id @default(uuid())
+  imgName            String
+  imgURL             String
+  activityLocationId String
+  activityLocation   ActivityLocation @relation(fields: [activityLocationId], references: [id])
+  promoterId         String? // ✅ Add this line
+  promoter           Promoter?        @relation(fields: [promoterId], references: [id]) // ✅ Add this relation
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model ActivityLocation {
+  id              String            @id @default(uuid())
+  name            String // Society Name
+  slug            String            @unique
+  address         String?
+  pincode         String? // Pincode(s) for the area
+  status          Status            @default(ACTIVE)
+  areaId          String?
+  area            Area?             @relation(fields: [areaId], references: [id])
+  activityId      String?
+  activity        Activity?         @relation(fields: [activityId], references: [id])
+  orders          OrderCaptured[]
+  ProjectLocation ProjectLocation[]
+
+  images ActivityImages[] // ✅ One-to-many relation
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  ProjectPromoCode ProjectPromoCode[]
+  Promoter         Promoter[]
+}
+
+model ProjectLocation {
+  id                 String @id @default(uuid())
+  projectId          String
+  activityLocationId String
+
+  project          Project          @relation(fields: [projectId], references: [id])
+  activityLocation ActivityLocation @relation(fields: [activityLocationId], references: [id])
+}
+
+model ProjectPromoCode {
+  id                 String            @id @default(uuid())
+  code               String            @unique
+  projectId          String
+  vendorId           String
+  activityLocationId String?
+  cityId             String?
+  status             Status            @default(ACTIVE)
+  project            Project           @relation(fields: [projectId], references: [id])
+  vendor             Vendor            @relation(fields: [vendorId], references: [id])
+  activityLocation   ActivityLocation? @relation(fields: [activityLocationId], references: [id])
+  city               City?             @relation(fields: [cityId], references: [id])
+  createdAt          DateTime          @default(now())
+  createdBy          String?
+
+  @@unique([projectId, vendorId, activityLocationId])
+}
+
+model OrderCaptured {
+  id            String  @id @default(uuid())
+  customerName  String?
+  customerPhone String?
+
+  vendorId String?
+  vendor   Vendor? @relation(fields: [vendorId], references: [id]) // ✅ Make relation optional
+
+  promoterId String?
+  promoter   Promoter? @relation(fields: [promoterId], references: [id]) // ✅ Make relation optional
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id]) // ✅ Make relation optional
+
+  activityLocId String?
+  activityLoc   ActivityLocation? @relation(fields: [activityLocId], references: [id]) // ✅ Make relation optional
+
+  activityId String?
+  activity   Activity? @relation(fields: [activityId], references: [id]) // ✅ Make relation optional
+
+  orderImage        String? // Uploaded screenshot/photo path
+  profileImage      String? // Uploaded profile photo path
+  OrderHistoryImage String? // Uploaded profile photo path
+  orderId           String? // Extracted from OCR
+  orderAddress      String? // Extracted from OCR
+  cashbackAmount    Float? // Extracted from OCR
+  status            OrderStatus @default(PENDING)
+  orderPlacedAt     String?
+  isFlagged         Boolean?    @default(false)
+  latitude          String?
+  longitude         String?
+  location          String?
+  deviceInfo        String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+model Admin {
+  id           String    @id @default(uuid())
+  name         String? // Admin Name
+  email        String    @unique
+  phone        String?
+  password     String
+  role         Role      @default(USER) // Role-based access
+  status       Status    @default(ACTIVE)
+  otp          String?
+  otpExpiresAt DateTime?
+  brandId      String?
+  brand        Brand?    @relation(fields: [brandId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  USER
+  CLIENT
+  VIEW
+}
